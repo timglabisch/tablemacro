@@ -26,13 +26,15 @@ macro_rules! _table {
         table_name = $table_name:expr,
         $($args:tt)*
     ) => {
-        _column! {
-            tokens = [$($rest)*],
-            struct_name = $struct_name,
-            column_name = [],
-            table_name = $table_name,
-            $($args)*
-        }
+            _columns! {
+                tokens = [$($rest)*],
+                table = {
+                    struct_name = $struct_name,
+                    table_name = $table_name,
+                },
+                columns = [],
+                $($args)*
+            }
     };
 
     // Invalid syntax
@@ -41,41 +43,78 @@ macro_rules! _table {
     }
 }
 
-macro_rules! _column {
+macro_rules! _columns {
     (
         tokens = [#[column = $column_name:expr] $($rest:tt)*],
-        struct_name = $struct_name:ident,
         $($args:tt)*
     ) => {
-        _column! {
+        _columns! {
+            current_column = {
+                column_name = $column_name,
+            },
             tokens = [$($rest)*],
-            column_name = $column_name,
-            struct_name = $struct_name,
             $($args)*
         }
     };
 
+    // we've the column name
     (
-        tokens = [$token:ident : $type:ty, $($rest:tt)*],
-        column_name = $column_name:expr,
-        struct_name = $struct_name:ident,
+        current_column = {
+            column_name = $column_name:expr,
+        },
+        tokens = [$token:ident : $ty:ty, $($rest:tt)*],
         $($args:tt)*
     ) => {
-         stringify!(token = $token, type = $type, column_name = $column_name, struct_name=$struct_name);
-         _column! {
+         _columns! {
+            current_column = {
+                column_name = $column_name,
+                type_name: $token,
+                ty: $ty
+            },
             tokens = [$($rest)*],
-            column_name = [],
-            struct_name = $struct_name,
             $($args)*
         }
     };
 
+    // we've no column name, but it's fine, it's otional.
+    (
+        tokens = [$token:ident : $ty:ty, $($rest:tt)*],
+        $($args:tt)*
+    ) => {
+         _columns! {
+            current_column = {
+                column_name = [],
+                type_name: $token,
+                ty: $ty
+            },
+            tokens = [$($rest)*],
+            $($args)*
+        }
+    };
+
+    // Done parsing this column
+    (
+        current_column = {
+            $($current_column:tt)*
+        },
+        tokens = $tokens:tt,
+        table = $table:tt,
+        columns = [$($columns:tt,)*],
+        $($args:tt)*
+    ) => {
+         _columns! {
+            tokens = $tokens,
+            table = $table,
+            columns = [$($columns,)* { $($current_column)* },],
+            $($args)*
+        }
+    };
 
     (
         tokens = [],
         $($args:tt)*
     ) => {
-         stringify!(FINISH);
+        _table_impl!($($args)*);
     };
 
     // Invalid syntax
@@ -84,12 +123,20 @@ macro_rules! _column {
     };
 }
 
-macro_rules! _test {
-    ($token:tt : $type:ty $(,$rest:tt)*) => { stringify!(OK); };
+macro_rules! _table_impl {
+    (
+        table = $table:tt,
+        columns = $columns:tt,
+    ) => {
+        stringify!(FINISH);
+    };
+
+     // Invalid syntax
     ($($tokens:tt)*) => {
-        compile_error!("Invalid!");
-    }
+        compile_error!("Invalid `_table_impl!` syntax.");
+    };
 }
+
 
 fn main() {
 
