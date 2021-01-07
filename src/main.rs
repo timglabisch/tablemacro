@@ -68,8 +68,8 @@ macro_rules! _columns {
          _columns! {
             current_column = {
                 column_name = $column_name,
-                type_name: $token,
-                ty: $ty
+                type_name = $token,
+                ty = $ty,
             },
             tokens = [$($rest)*],
             $($args)*
@@ -84,8 +84,8 @@ macro_rules! _columns {
          _columns! {
             current_column = {
                 column_name = [],
-                type_name: $token,
-                ty: $ty
+                type_name = $token,
+                ty = $ty,
             },
             tokens = [$($rest)*],
             $($args)*
@@ -125,10 +125,23 @@ macro_rules! _columns {
 
 macro_rules! _table_impl {
     (
-        table = $table:tt,
-        columns = $columns:tt,
+        table = {
+            struct_name = $struct_name:ident,
+            table_name = $table_name:expr,
+        },
+        columns = [$({
+            column_name = $column_name:expr,
+            type_name = $type_name:ident,
+            ty = $ty:ty,
+        },)+],
     ) => {
-        stringify!(FINISH);
+        struct $struct_name {
+            x: u64,
+
+            $(
+                $type_name : $ty,
+            )+
+        }
     };
 
      // Invalid syntax
@@ -146,10 +159,12 @@ fn main() {
         struct Foo {
             #[column = "foo column"]
             foo1 : u64,
+            #[column = "bar column"]
             foo2 : u32,
         }
     );
     trace_macros!(false);
 
+    let x = Foo {}
 
 }
