@@ -159,12 +159,11 @@ fn main() {
         struct Foo {
             #[column = "foo column"]
             foo1 : u64,
-            #[column = "bar column"]
             foo2 : u32,
         }
     );
     trace_macros!(false);
 
-    let x = Foo {}
+    // let x = Foo {};
 
 }
