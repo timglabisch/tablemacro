@@ -123,11 +123,16 @@ macro_rules! _columns {
     };
 }
 
+#[derive(Debug)]
 pub struct Update<'a> {
     pub field : &'static str,
     pub column : &'static str,
     pub new_value : &'a u64,
     pub old_value : &'a Option<u64>,
+}
+
+pub trait CalcUpdats {
+    fn updates(&self) -> Vec<Update>;
 }
 
 macro_rules! _table_impl {
@@ -159,8 +164,8 @@ macro_rules! _table_impl {
             )+
         }
 
-        impl $struct_name {
-            pub fn updates(&self) -> Vec<Update> {
+        impl CalcUpdats for $struct_name {
+            fn updates(&self) -> Vec<Update> {
                 let mut buf = vec![];
                 $(
 
@@ -195,7 +200,6 @@ macro_rules! _table_impl {
 
 
 fn main() {
-
     trace_macros!(true);
     table!(
         #[table = "bar_table"]
@@ -206,14 +210,42 @@ fn main() {
         }
     );
     trace_macros!(false);
+}
 
-    /*
-    let y = table_shadow::Foo {
 
+#[cfg(test)]
+mod tests {
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[test]
+    fn test_basic_diff() {
+
+        table!(
+            #[table = "bar_table"]
+            struct Foo {
+                #[column = "foo column"]
+                foo1 : u64,
+            }
+        );
+
+        let x = Foo {
+            _shadow: table_shadow::Foo {
+                foo1: None,
+            },
+            foo1: 123,
+        };
+
+        assert_eq!(1, CalcUpdats::updates(&x).len());
+        
+        let x = Foo {
+            _shadow: table_shadow::Foo {
+                foo1: Some(123),
+            },
+            foo1: 123,
+        };
+
+        assert_eq!(0, CalcUpdats::updates(&x).len());
     }
-
-    let x = Foo {
-    };
-     */
 
 }
