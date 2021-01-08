@@ -123,6 +123,13 @@ macro_rules! _columns {
     };
 }
 
+pub struct Update<'a> {
+    pub field : &'static str,
+    pub column : &'static str,
+    pub new_value : &'a u64,
+    pub old_value : &'a Option<u64>,
+}
+
 macro_rules! _table_impl {
     (
         table = {
@@ -135,13 +142,49 @@ macro_rules! _table_impl {
             ty = $ty:ty,
         },)+],
     ) => {
-        struct $struct_name {
-            x: u64,
+
+        mod table_shadow {
+            pub struct $struct_name {
+                $(
+                    pub (crate) $type_name : Option<$ty>,
+                )+
+            }
+        }
+
+        pub struct $struct_name {
+            _shadow : table_shadow::$struct_name,
 
             $(
                 $type_name : $ty,
             )+
         }
+
+        impl $struct_name {
+            pub fn updates(&self) -> Vec<Update> {
+                let mut buf = vec![];
+                $(
+
+                    match (&self.$type_name, &self._shadow.$type_name) {
+                        (o, Some(s)) if o == s => {
+                            // noop, same
+                        },
+                        _ => {
+                            buf.push(Update {
+                                field : stringify!($type_name),
+                                column : stringify!($column_name),
+                                new_value : &self.$type_name,
+                                old_value : &self._shadow.$type_name,
+                            });
+                        }
+
+                    };
+                )+
+
+                buf
+            }
+        }
+
+
     };
 
      // Invalid syntax
@@ -159,11 +202,18 @@ fn main() {
         struct Foo {
             #[column = "foo column"]
             foo1 : u64,
-            foo2 : u32,
+            foo2 : u64,
         }
     );
     trace_macros!(false);
 
-    // let x = Foo {};
+    /*
+    let y = table_shadow::Foo {
+
+    }
+
+    let x = Foo {
+    };
+     */
 
 }
