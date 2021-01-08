@@ -215,7 +215,6 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
 
     #[test]
@@ -237,7 +236,7 @@ mod tests {
         };
 
         assert_eq!(1, CalcUpdats::updates(&x).len());
-        
+
         let x = Foo {
             _shadow: table_shadow::Foo {
                 foo1: Some(123),
