@@ -127,8 +127,8 @@ macro_rules! _columns {
 pub struct Update<'a> {
     pub field : &'static str,
     pub column : &'static str,
-    pub new_value : &'a u64,
-    pub old_value : &'a Option<u64>,
+    pub new_value : &'a u32,
+    pub old_value : &'a Option<u32>,
 }
 
 pub trait CalcUpdats {
@@ -164,7 +164,48 @@ macro_rules! _table_impl {
             )+
         }
 
+        impl $struct_name {
+            async fn build_update_query(&self) -> Option<String> {
+
+                let updates = self.updates();
+
+                if updates.len() == 0 {
+                    return None;
+                }
+
+                let mut sql = String::new();
+                sql.push_str("UPDATE ");
+                sql.push_str(stringify!($table_name));
+                sql.push_str(" ");
+
+                sql.push_str(
+                    &updates
+                        .iter()
+                        .map(|u| format!("{} = ?", u.column))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+
+                let mut q = sqlx::query(&sql);
+
+                let pool = ::sqlx::MySqlPool::connect("mysql://user:pass@host/database").await.expect("...");
+
+
+                for update in updates {
+                    q = q.bind(update.new_value.clone());
+                }
+
+/*
+                q
+                .execute(&pool)
+                .await.expect("...");
+*/
+                Some("sql".to_string())
+            }
+        }
+
         impl CalcUpdats for $struct_name {
+
             fn updates(&self) -> Vec<Update> {
                 let mut buf = vec![];
                 $(
@@ -205,8 +246,8 @@ fn main() {
         #[table = "bar_table"]
         struct Foo {
             #[column = "foo column"]
-            foo1 : u64,
-            foo2 : u64,
+            foo1 : u32,
+            foo2 : u32,
         }
     );
     trace_macros!(false);
