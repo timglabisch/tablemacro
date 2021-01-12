@@ -43,49 +43,82 @@ macro_rules! _table {
     }
 }
 
-macro_rules! _columns {
+macro_rules! _annotation {
+
     (
-        tokens = [#[column = $column_name:expr] $($rest:tt)*],
+        annotation_tokens = [$column_ident:ident = $column_value:expr, $($rest:tt)*],
+        current_annotation = [ $($current_annotation:tt)* ],
+        $($args:tt)*
+    ) => {
+        _annotation! {
+            annotation_tokens = [$($rest)*],
+            current_annotation = [
+                {key = $column_ident , value = $column_value}, $($current_annotation)*
+            ],
+            $($args)*
+        }
+    };
+
+    (
+        annotation_tokens = [],
+        current_annotation = [ $($current_annotation:tt)* ],
+        tokens = [$($tokens:tt)*],
         $($args:tt)*
     ) => {
         _columns! {
+            tokens = [$($tokens)*],
+            annotations = [$($current_annotation)*],
+            $($args)*
+        };
+    };
+
+    // Invalid syntax
+    ($($tokens:tt)*) => {
+        compile_error!("Invalid `anotation!` syntax.");
+    }
+}
+
+macro_rules! _columns {
+    (
+        tokens = [#[$($annotation:tt)*] $($rest:tt)*],
+        $($args:tt)*
+    ) => {
+
+        _annotation! {
+           annotation_tokens = [$($annotation)*],
+           current_annotation = [],
+           tokens = [$($rest)*],
+           $($args)*
+        }
+    };
+
+    // we've annotations
+    (
+        tokens = [$token:ident : $ty:ty, $($rest:tt)*],
+        annotations = [$($annotations:tt)*],
+        $($args:tt)*
+    ) => {
+         _columns! {
             current_column = {
-                column_name = $column_name,
+                type_name = $token,
+                ty = $ty,
+                annotations = [$($annotations)*],
             },
             tokens = [$($rest)*],
             $($args)*
         }
     };
 
-    // we've the column name
-    (
-        current_column = {
-            column_name = $column_name:expr,
-        },
-        tokens = [$token:ident : $ty:ty, $($rest:tt)*],
-        $($args:tt)*
-    ) => {
-         _columns! {
-            current_column = {
-                column_name = $column_name,
-                type_name = $token,
-                ty = $ty,
-            },
-            tokens = [$($rest)*],
-            $($args)*
-        }
-    };
-
-    // we've no column name, but it's fine, it's otional.
+    // we've no annotations
     (
         tokens = [$token:ident : $ty:ty, $($rest:tt)*],
         $($args:tt)*
     ) => {
          _columns! {
             current_column = {
-                column_name = [],
                 type_name = $token,
                 ty = $ty,
+                annotations = [ { key = phantom , value = "phantom" }, ],
             },
             tokens = [$($rest)*],
             $($args)*
@@ -142,9 +175,12 @@ macro_rules! _table_impl {
             table_name = $table_name:expr,
         },
         columns = [$({
-            column_name = $column_name:expr,
             type_name = $type_name:ident,
             ty = $ty:ty,
+            annotations = [$({
+                key = $annotation_key:ident,
+                value = $annotation_value:expr,
+            },)*],
         },)+],
     ) => {
 
@@ -165,6 +201,15 @@ macro_rules! _table_impl {
         }
 
         impl $struct_name {
+
+            pub fn get_pks() -> ! {
+                $(
+                    let x = vec![$(
+                        (stringify!($annotation_key), $annotation_value)
+                    )*];
+                )*
+            }
+
             async fn build_update_query(&self) -> Option<String> {
 
                 let updates = self.updates();
@@ -245,7 +290,7 @@ fn main() {
     table!(
         #[table = "bar_table"]
         struct Foo {
-            #[column = "foo column"]
+            #[column = "foo column", xxx = "barrrr",]
             foo1 : u32,
             foo2 : u32,
         }
@@ -264,8 +309,8 @@ mod tests {
         table!(
             #[table = "bar_table"]
             struct Foo {
-                #[column = "foo column"]
-                foo1 : u64,
+                #[column = "foo column",]
+                foo1 : u32,
             }
         );
 
