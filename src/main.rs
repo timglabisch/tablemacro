@@ -236,6 +236,7 @@ macro_rules! _table_impl {
 
             pub fn get_pks() -> &'static[&'static str] {
 
+                // todo, find a way without heap allocation
                 let mut pk = vec![];
                 $($crate::static_cond! {
                     if $primary_key == true {
