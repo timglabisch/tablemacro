@@ -46,28 +46,30 @@ macro_rules! _table {
 macro_rules! _annotation {
 
     (
-        annotation_tokens = [$column_ident:ident = $column_value:expr, $($rest:tt)*],
-        current_annotation = [ $($current_annotation:tt)* ],
+        annotation_tokens = [column = $column_value:expr, $($rest:tt)*],
+        annotations = {
+            column = $column_value_old:expr,
+        },
         $($args:tt)*
     ) => {
         _annotation! {
             annotation_tokens = [$($rest)*],
-            current_annotation = [
-                {key = $column_ident , value = $column_value}, $($current_annotation)*
-            ],
+            annotations = {
+                column = $column_value,
+            },
             $($args)*
         }
     };
 
     (
         annotation_tokens = [],
-        current_annotation = [ $($current_annotation:tt)* ],
+        annotations = $annotations:tt,
         tokens = [$($tokens:tt)*],
         $($args:tt)*
     ) => {
         _columns! {
             tokens = [$($tokens)*],
-            annotations = [$($current_annotation)*],
+            annotations = $annotations,
             $($args)*
         };
     };
@@ -86,7 +88,9 @@ macro_rules! _columns {
 
         _annotation! {
            annotation_tokens = [$($annotation)*],
-           current_annotation = [],
+           annotations = {
+            column = "",
+           },
            tokens = [$($rest)*],
            $($args)*
         }
@@ -95,14 +99,16 @@ macro_rules! _columns {
     // we've annotations
     (
         tokens = [$token:ident : $ty:ty, $($rest:tt)*],
-        annotations = [$($annotations:tt)*],
+        annotations = {
+            column = $column_value:expr,
+        },
         $($args:tt)*
     ) => {
          _columns! {
             current_column = {
                 type_name = $token,
                 ty = $ty,
-                annotations = [$($annotations)*],
+                column = $column_value,
             },
             tokens = [$($rest)*],
             $($args)*
@@ -118,7 +124,7 @@ macro_rules! _columns {
             current_column = {
                 type_name = $token,
                 ty = $ty,
-                annotations = [ { key = phantom , value = "phantom" }, ],
+                column = "",
             },
             tokens = [$($rest)*],
             $($args)*
@@ -177,11 +183,8 @@ macro_rules! _table_impl {
         columns = [$({
             type_name = $type_name:ident,
             ty = $ty:ty,
-            annotations = [$({
-                key = $annotation_key:ident,
-                value = $annotation_value:expr,
-            },)*],
-        },)+],
+            column = $column:expr,
+        },)*],
     ) => {
 
         mod table_shadow {
@@ -202,12 +205,10 @@ macro_rules! _table_impl {
 
         impl $struct_name {
 
-            pub fn get_pks() -> ! {
-                $(
-                    let x = vec![$(
-                        (stringify!($annotation_key), $annotation_value)
-                    )*];
-                )*
+            pub fn get_columns() -> &'static[&'static str] {
+                &[$(
+                    $column,
+                )*]
             }
 
             async fn build_update_query(&self) -> Option<String> {
@@ -290,7 +291,7 @@ fn main() {
     table!(
         #[table = "bar_table"]
         struct Foo {
-            #[column = "foo column", xxx = "barrrr",]
+            #[column = "foo column",]
             foo1 : u32,
             foo2 : u32,
         }
