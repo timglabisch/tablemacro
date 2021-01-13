@@ -50,7 +50,7 @@ macro_rules! _annotation {
     (
         annotation_tokens = [pk, $($rest:tt)*],
         annotations = {
-            primary_key = $old_primary_key:expr,
+            primary_key = $old_primary_key:ident,
             column = $column_value:expr,
         },
         $($args:tt)*
@@ -58,7 +58,7 @@ macro_rules! _annotation {
         _annotation! {
             annotation_tokens = [$($rest)*],
             annotations = {
-                primary_key = "true",
+                primary_key = true,
                 column = $column_value,
             },
             $($args)*
@@ -68,7 +68,7 @@ macro_rules! _annotation {
     (
         annotation_tokens = [column = $column_value:expr, $($rest:tt)*],
         annotations = {
-            primary_key = $primary_key:expr,
+            primary_key = $primary_key:ident,
             column = $column_value_old:expr,
         },
         $($args:tt)*
@@ -111,7 +111,7 @@ macro_rules! _columns {
         _annotation! {
            annotation_tokens = [$($annotation)*],
            annotations = {
-            primary_key = "false",
+            primary_key = false,
             column = "",
            },
            tokens = [$($rest)*],
@@ -123,7 +123,7 @@ macro_rules! _columns {
     (
         tokens = [$token:ident : $ty:ty, $($rest:tt)*],
         annotations = {
-            primary_key = $primary_key:expr,
+            primary_key = $primary_key:ident,
             column = $column_value:expr,
         },
         $($args:tt)*
@@ -149,7 +149,7 @@ macro_rules! _columns {
             current_column = {
                 type_name = $token,
                 ty = $ty,
-                primary_key = "false",
+                primary_key = false,
                 column = "",
             },
             tokens = [$($rest)*],
@@ -211,7 +211,7 @@ macro_rules! _table_impl {
         columns = [$({
             type_name = $type_name:ident,
             ty = $ty:ty,
-            primary_key = $primary_key:expr,
+            primary_key = $primary_key:ident,
             column = $column:expr,
         },)*],
     ) => {
@@ -235,13 +235,16 @@ macro_rules! _table_impl {
         impl $struct_name {
 
             pub fn get_pks() -> &'static[&'static str] {
+
+                let mut pk = vec![];
                 $($crate::static_cond! {
                     if $primary_key == true {
-                        $primary_key
+                        pk.append($column);
                     } else {
-                        $primary_key
                     }
-                })*
+                })*;
+
+                &pk
             }
 
             pub fn get_columns() -> &'static[&'static str] {
