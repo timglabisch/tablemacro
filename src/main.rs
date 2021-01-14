@@ -254,7 +254,7 @@ macro_rules! _table_impl {
                 )*]
             }
 
-            async fn build_update_query(&self) -> Option<String> {
+            async fn build_update_query<DB>(&self, pool : ::sqlx::Pool<DB>) -> Option<Result<DB::Done, ::sqlx::Error>> where DB: ::sqlx::Database {
 
                 let updates = self.updates();
 
@@ -278,30 +278,25 @@ macro_rules! _table_impl {
 
                 let mut q = sqlx::query(&sql);
 
-                let pool = ::sqlx::MySqlPool::connect("mysql://user:pass@host/database").await.expect("...");
-
                 for update in updates {
                     q = q.bind(update.new_value.clone());
                 }
-                /*
 
                 sql.push_str("WHERE ");
 
-                for (i, pk) in Self::get_pks().iter().enumerate() {
-                    if i != 0 {
-                        sql.push_str(" AND ")
+
+                $($crate::static_cond! {
+                    if $primary_key == true {
+                        sql.push_str("`");
+                        sql.push_str($column);
+                        sql.push_str("` = ? AND ");
+                        q = q.bind(self.$type_name.clone());
                     }
+                })*;
 
-                    sql.push_str(pk);
-                    sql.push_str(" = ");
-                    sql.push_str("? ");
-                }
+                sql.push_str(" 1 = 1 ");
 
-                q
-                .execute(&pool)
-                .await.expect("...");
-*/
-                Some(sql)
+                Some(q.execute(&pool).await)
             }
         }
 
