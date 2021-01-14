@@ -234,18 +234,18 @@ macro_rules! _table_impl {
 
         impl $struct_name {
 
-            pub fn get_pks() -> &'static[&'static str] {
+            pub fn get_pks() -> Vec<&'static str> {
 
                 // todo, find a way without heap allocation
                 let mut pk = vec![];
                 $($crate::static_cond! {
                     if $primary_key == true {
-                        pk.append($column);
+                        pk.push($column);
                     } else {
                     }
                 })*;
 
-                &pk
+                pk
             }
 
             pub fn get_columns() -> &'static[&'static str] {
@@ -268,11 +268,12 @@ macro_rules! _table_impl {
                 sql.push_str(" SET ");
 
                 sql.push_str(
-                    &updates
+                    &(&updates
                         .iter()
                         .map(|u| format!("{} = ?", u.column))
                         .collect::<Vec<_>>()
                         .join(", ")
+                        )
                 );
 
                 let mut q = sqlx::query(&sql);
@@ -282,15 +283,25 @@ macro_rules! _table_impl {
                 for update in updates {
                     q = q.bind(update.new_value.clone());
                 }
+                /*
 
                 sql.push_str("WHERE ");
 
-/*
+                for (i, pk) in Self::get_pks().iter().enumerate() {
+                    if i != 0 {
+                        sql.push_str(" AND ")
+                    }
+
+                    sql.push_str(pk);
+                    sql.push_str(" = ");
+                    sql.push_str("? ");
+                }
+
                 q
                 .execute(&pool)
                 .await.expect("...");
 */
-                Some("sql".to_string())
+                Some(sql)
             }
         }
 
