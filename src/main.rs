@@ -265,7 +265,7 @@ macro_rules! _table_impl {
                 let mut sql = String::new();
                 sql.push_str("UPDATE ");
                 sql.push_str(stringify!($table_name));
-                sql.push_str(" ");
+                sql.push_str(" SET ");
 
                 sql.push_str(
                     &updates
@@ -279,10 +279,11 @@ macro_rules! _table_impl {
 
                 let pool = ::sqlx::MySqlPool::connect("mysql://user:pass@host/database").await.expect("...");
 
-
                 for update in updates {
                     q = q.bind(update.new_value.clone());
                 }
+
+                sql.push_str("WHERE ");
 
 /*
                 q
