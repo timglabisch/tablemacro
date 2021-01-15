@@ -255,9 +255,9 @@ macro_rules! _table_impl {
             }
 
             async fn build_update_query<'a, 'p, DB>(&'a self, pool : &'p ::sqlx::Pool<DB>)
-                -> Option<Result<<DB as ::sqlx::Database>::Done, ::sqlx::Error>>
+                -> Option<()>
              where
-             'p : 'a,
+             // 'p : 'a,
              DB: ::sqlx::Database,
              <DB as ::sqlx::database::HasArguments<'p>>::Arguments: ::sqlx::IntoArguments<'p, DB>,
              for<'c> &'c mut DB::Connection: ::sqlx::Executor<'c, Database = DB>,
@@ -287,6 +287,8 @@ macro_rules! _table_impl {
                         )
                 );
 
+                sql.push_str("WHERE ");
+
                 $($crate::static_cond! {
                     if $primary_key == true {
                         sql.push_str("`");
@@ -303,18 +305,18 @@ macro_rules! _table_impl {
                     q = q.bind(update.new_value.clone());
                 }
 
-                sql.push_str("WHERE ");
-
                 $($crate::static_cond! {
                     if $primary_key == true {
                         q = q.bind(self.$type_name.clone());
                     }
                 })*;
 
-                Some(
-                    q
+                q
                     .execute(pool)
-                    .await
+                    .await;
+
+                Some(
+                    ()
                 )
             }
         }
