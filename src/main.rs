@@ -254,11 +254,15 @@ macro_rules! _table_impl {
                 )*]
             }
 
-            fn build_update_query<DB>(&self, pool : ::sqlx::Pool<DB>)
-                -> Option<::sqlx::query::Query<'_, DB, <DB as ::sqlx::database::HasArguments<'_>>::Arguments>>
-             where DB: ::sqlx::Database,
+            async fn build_update_query<'a, 'p, DB>(&'a self, pool : &'p ::sqlx::Pool<DB>)
+                -> ()
+             where
+             'p : 'a,
+             DB: ::sqlx::Database,
+             <DB as ::sqlx::database::HasArguments<'p>>::Arguments: ::sqlx::IntoArguments<'p, DB>,
+             for<'c> &'c mut DB::Connection: ::sqlx::Executor<'c, Database = DB>,
              $(
-             $ty: ::sqlx::Encode<'static, DB>,
+             $ty: ::sqlx::Encode<'p, DB>,
              $ty: ::sqlx::Type<DB>,
              )*
              {
@@ -283,6 +287,16 @@ macro_rules! _table_impl {
                         )
                 );
 
+                $($crate::static_cond! {
+                    if $primary_key == true {
+                        sql.push_str("`");
+                        sql.push_str($column);
+                        sql.push_str("` = ? AND ");
+                    }
+                })*;
+
+                sql.push_str(" 1 = 1 ");
+
                 let mut q = sqlx::query::<DB>(&sql);
 
                 for update in updates {
@@ -291,19 +305,15 @@ macro_rules! _table_impl {
 
                 sql.push_str("WHERE ");
 
-
                 $($crate::static_cond! {
                     if $primary_key == true {
-                        sql.push_str("`");
-                        sql.push_str($column);
-                        sql.push_str("` = ? AND ");
                         q = q.bind(self.$type_name.clone());
                     }
                 })*;
 
-                sql.push_str(" 1 = 1 ");
-
-                Some(q)
+                q
+                .execute(pool)
+                .await
             }
         }
 
