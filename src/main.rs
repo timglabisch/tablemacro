@@ -255,7 +255,7 @@ macro_rules! _table_impl {
             }
 
             async fn build_update_query<'a, 'p, DB>(&'a self, pool : &'p ::sqlx::Pool<DB>)
-                -> ()
+                -> Option<Result<<DB as ::sqlx::Database>::Done, ::sqlx::Error>>
              where
              'p : 'a,
              DB: ::sqlx::Database,
@@ -311,9 +311,11 @@ macro_rules! _table_impl {
                     }
                 })*;
 
-                q
-                .execute(pool)
-                .await
+                Some(
+                    q
+                    .execute(pool)
+                    .await
+                )
             }
         }
 
