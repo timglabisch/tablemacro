@@ -254,7 +254,14 @@ macro_rules! _table_impl {
                 )*]
             }
 
-            async fn build_update_query<DB>(&self, pool : ::sqlx::Pool<DB>) -> Option<Result<DB::Done, ::sqlx::Error>> where DB: ::sqlx::Database {
+            fn build_update_query<DB>(&self, pool : ::sqlx::Pool<DB>)
+                -> Option<::sqlx::query::Query<'_, DB, <DB as ::sqlx::database::HasArguments<'_>>::Arguments>>
+             where DB: ::sqlx::Database,
+             $(
+             $ty: ::sqlx::Encode<'static, DB>,
+             $ty: ::sqlx::Type<DB>,
+             )*
+             {
 
                 let updates = self.updates();
 
@@ -276,7 +283,7 @@ macro_rules! _table_impl {
                         )
                 );
 
-                let mut q = sqlx::query(&sql);
+                let mut q = sqlx::query::<DB>(&sql);
 
                 for update in updates {
                     q = q.bind(update.new_value.clone());
@@ -296,7 +303,7 @@ macro_rules! _table_impl {
 
                 sql.push_str(" 1 = 1 ");
 
-                Some(q.execute(&pool).await)
+                Some(q)
             }
         }
 
