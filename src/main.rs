@@ -192,10 +192,10 @@ macro_rules! _columns {
 
 #[derive(Debug)]
 pub struct Update<'a> {
-    pub field : &'static str,
-    pub column : &'static str,
-    pub new_value : &'a u32,
-    pub old_value : &'a Option<u32>,
+    pub field: &'static str,
+    pub column: &'static str,
+    pub new_value: &'a u32,
+    pub old_value: &'a Option<u32>,
 }
 
 pub trait CalcUpdats {
@@ -256,11 +256,10 @@ macro_rules! _table_impl {
 
             async fn build_update_query<'a, 'p, DB>(&'a self, pool : &'p ::sqlx::Pool<DB>)
                 -> Option<()>
-             where
-             // 'p : 'a,
-             DB: ::sqlx::Database,
-             <DB as ::sqlx::database::HasArguments<'p>>::Arguments: ::sqlx::IntoArguments<'p, DB>,
-             for<'c> &'c mut DB::Connection: ::sqlx::Executor<'c, Database = DB>,
+            where
+            <DB as ::sqlx::database::HasArguments<'p>>::Arguments: ::sqlx::IntoArguments<'p, DB>,
+            DB: ::sqlx::Database,
+            &mut 'p ::sqlx::pool::PoolConnection<DB>: for<'x> ::sqlx::Executor<'x, Database = DB>,
              $(
              $ty: ::sqlx::Encode<'p, DB>,
              $ty: ::sqlx::Type<DB>,
@@ -299,21 +298,28 @@ macro_rules! _table_impl {
 
                 sql.push_str(" 1 = 1 ");
 
-                let mut q = sqlx::query::<DB>(&sql);
+                {
+                    let mut conn : ::sqlx::pool::PoolConnection<DB> = pool.acquire().await.expect("nooo");
 
-                for update in updates {
-                    q = q.bind(update.new_value.clone());
-                }
+                    let mut q = ::sqlx::query::<DB>(&sql);
 
-                $($crate::static_cond! {
-                    if $primary_key == true {
-                        q = q.bind(self.$type_name.clone());
+                    for update in updates {
+                        q = q.bind(update.new_value.clone());
                     }
-                })*;
 
-                q
-                    .execute(pool)
-                    .await;
+                    $($crate::static_cond! {
+                        if $primary_key == true {
+                            q = q.bind(self.$type_name.clone());
+                        }
+                    })*;
+
+
+                    // <&mut ::sqlx::pool::PoolConnection<DB> as ::sqlx::Executor<'_>>.execute(&mut conn)
+
+                    q
+                        .execute(&mut conn)
+                        .await;
+                }
 
                 Some(
                     ()
@@ -377,7 +383,6 @@ mod tests {
 
     #[test]
     fn test_basic_diff() {
-
         table!(
             #[table = "bar_table"]
             struct Foo {
@@ -404,5 +409,4 @@ mod tests {
 
         assert_eq!(0, CalcUpdats::updates(&x).len());
     }
-
 }
