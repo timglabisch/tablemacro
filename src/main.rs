@@ -254,7 +254,7 @@ macro_rules! _table_impl {
                 )*]
             }
 
-            async fn execute_update_query<'a>(&'a self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>, sql : &str, updates : &Vec<Update<'a>>) -> () {
+            async fn execute_update_query<'a>(&'a self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>, sql : &str, updates : &Vec<Update<'a>>) -> Result<::sqlx::mysql::MySqlDone, ::sqlx::Error> {
 
                 let mut q = ::sqlx::query::<::sqlx::mysql::MySql>(sql);
 
@@ -272,11 +272,11 @@ macro_rules! _table_impl {
 
                 q
                     .execute(&mut conn)
-                    .await;
+                    .await
             }
 
             async fn build_update_query<'a>(&'a self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>)
-                -> Option<()>
+                -> Option<Result<::sqlx::mysql::MySqlDone, ::sqlx::Error>>
             where
              $(
              $ty: ::sqlx::Encode<'a, ::sqlx::mysql::MySql>,
