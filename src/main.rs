@@ -254,15 +254,33 @@ macro_rules! _table_impl {
                 )*]
             }
 
-            async fn build_update_query<'a, 'p, DB>(&'a self, pool : &'p ::sqlx::Pool<DB>)
+            async fn execute_update_query<'a>(&'a self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>, sql : &str, updates : &Vec<Update<'a>>) -> () {
+
+                let mut q = ::sqlx::query::<::sqlx::mysql::MySql>(sql);
+
+                for update in updates {
+                    q = q.bind(update.new_value.clone());
+                }
+
+                $($crate::static_cond! {
+                    if $primary_key == true {
+                        q = q.bind(self.$type_name.clone());
+                    }
+                })*;
+
+                let mut conn : ::sqlx::pool::PoolConnection<::sqlx::mysql::MySql> = pool.acquire().await.expect("nooo");
+
+                q
+                    .execute(&mut conn)
+                    .await;
+            }
+
+            async fn build_update_query<'a>(&'a self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>)
                 -> Option<()>
             where
-            <DB as ::sqlx::database::HasArguments<'p>>::Arguments: ::sqlx::IntoArguments<'p, DB>,
-            DB: ::sqlx::Database,
-            &mut 'p ::sqlx::pool::PoolConnection<DB>: for<'x> ::sqlx::Executor<'x, Database = DB>,
              $(
-             $ty: ::sqlx::Encode<'p, DB>,
-             $ty: ::sqlx::Type<DB>,
+             $ty: ::sqlx::Encode<'a, ::sqlx::mysql::MySql>,
+             $ty: ::sqlx::Type<::sqlx::mysql::MySql>,
              )*
              {
 
@@ -298,31 +316,8 @@ macro_rules! _table_impl {
 
                 sql.push_str(" 1 = 1 ");
 
-                {
-                    let mut conn : ::sqlx::pool::PoolConnection<DB> = pool.acquire().await.expect("nooo");
-
-                    let mut q = ::sqlx::query::<DB>(&sql);
-
-                    for update in updates {
-                        q = q.bind(update.new_value.clone());
-                    }
-
-                    $($crate::static_cond! {
-                        if $primary_key == true {
-                            q = q.bind(self.$type_name.clone());
-                        }
-                    })*;
-
-
-                    // <&mut ::sqlx::pool::PoolConnection<DB> as ::sqlx::Executor<'_>>.execute(&mut conn)
-
-                    q
-                        .execute(&mut conn)
-                        .await;
-                }
-
                 Some(
-                    ()
+                    self.execute_update_query(pool, &sql, &updates).await
                 )
             }
         }
