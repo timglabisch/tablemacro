@@ -275,11 +275,11 @@ macro_rules! _table_impl {
                     .await
             }
 
-            async fn build_update_query<'a>(&'a self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>)
+            async fn build_update_query(&self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>)
                 -> Option<Result<::sqlx::mysql::MySqlDone, ::sqlx::Error>>
             where
              $(
-             $ty: ::sqlx::Encode<'a, ::sqlx::mysql::MySql>,
+             $ty: for<'x> ::sqlx::Encode<'x, ::sqlx::mysql::MySql>,
              $ty: ::sqlx::Type<::sqlx::mysql::MySql>,
              )*
              {
