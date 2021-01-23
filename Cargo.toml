@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 sqlx = { version = "0.4.*", features = ["runtime-tokio-rustls", "mysql"]}
+tokio = { version = "0.2.*", features = ["full"] }

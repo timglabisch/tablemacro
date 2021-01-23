@@ -195,7 +195,7 @@ pub struct Update<'a> {
     pub field: &'static str,
     pub column: &'static str,
     pub new_value: &'a u32,
-    pub old_value: &'a Option<u32>,
+    pub old_value: Option<&'a u32>,
 }
 
 pub trait CalcUpdats {
@@ -219,13 +219,13 @@ macro_rules! _table_impl {
         mod table_shadow {
             pub struct $struct_name {
                 $(
-                    pub (crate) $type_name : Option<$ty>,
+                    pub (crate) $type_name : $ty,
                 )+
             }
         }
 
         pub struct $struct_name {
-            _shadow : table_shadow::$struct_name,
+            _shadow : Option<table_shadow::$struct_name>,
 
             $(
                 $type_name : $ty,
@@ -328,8 +328,8 @@ macro_rules! _table_impl {
                 let mut buf = vec![];
                 $(
 
-                    match (&self.$type_name, &self._shadow.$type_name) {
-                        (o, Some(s)) if o == s => {
+                    match &self._shadow {
+                        Some(shadow) if &shadow.$type_name == &self.$type_name => {
                             // noop, same
                         },
                         _ => {
@@ -337,7 +337,10 @@ macro_rules! _table_impl {
                                 field : stringify!($type_name),
                                 column : stringify!($column_name),
                                 new_value : &self.$type_name,
-                                old_value : &self._shadow.$type_name,
+                                old_value : match &self._shadow {
+                                    None => None,
+                                    Some(s) => Some(&s.$type_name)
+                                },
                             });
                         }
 
@@ -387,21 +390,68 @@ mod tests {
         );
 
         let x = Foo {
-            _shadow: table_shadow::Foo {
-                foo1: None,
-            },
+            _shadow: None,
             foo1: 123,
         };
 
         assert_eq!(1, CalcUpdats::updates(&x).len());
 
         let x = Foo {
-            _shadow: table_shadow::Foo {
-                foo1: Some(123),
-            },
+            _shadow: Some(table_shadow::Foo {
+                foo1: 123,
+            }),
             foo1: 123,
         };
 
         assert_eq!(0, CalcUpdats::updates(&x).len());
+    }
+
+    #[test]
+    fn integrationtest_update() {
+        ::tokio::runtime::Builder::new()
+            .basic_scheduler()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let database_url = "mysql://root:dummy@localhost:3306";
+                let db_pool = ::sqlx::mysql::MySqlPool::connect(&database_url).await.expect("could not connect");
+                ::sqlx::query("DROP DATABASE IF EXISTS test").execute(&db_pool).await.expect("drop db");
+                ::sqlx::query("CREATE DATABASE test;").execute(&db_pool).await.expect("create db");
+                let database_url = "mysql://root:dummy@localhost:3306/test";
+                let db_pool = ::sqlx::mysql::MySqlPool::connect(&database_url).await.expect("could not connect");
+                ::sqlx::query(r"
+                CREATE TABLE `xxx`
+                (
+                    `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+                    `some_field`          int(11)        NOT NULL,
+                    `some_other_field`    int(11)        NOT NULL,
+                    PRIMARY KEY (`id`)
+                ) ENGINE = InnoDB
+                  DEFAULT CHARSET = utf8mb4
+                  COLLATE = utf8mb4_unicode_ci;
+                ").execute(&db_pool).await.expect("create db");
+
+                table!(
+                    #[table = "xxxx"]
+                    struct Xxx {
+                        #[pk, column = "id",]
+                        id : u32,
+                        #[column = "some_field",]
+                        some_field : u32,
+                        #[column = "some_other_field",]
+                        some_other_field : u32,
+                    }
+                );
+
+                let item = Xxx {
+                    _shadow: None,
+                    id: 1,
+                    some_field: 2,
+                    some_other_field: 3
+                };
+
+                item.build_update_query(db_pool).await.expect("insert into db");
+            })
     }
 }
