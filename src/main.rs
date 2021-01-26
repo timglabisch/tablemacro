@@ -198,9 +198,145 @@ pub struct Update<'a> {
     pub old_value: Option<&'a u32>,
 }
 
-pub trait CalcUpdats {
-    fn updates(&self) -> Vec<Update>;
+pub enum Change<'a> {
+    Update(Vec<Update<'a>>),
+    Insert,
 }
+
+impl<'a> Change<'a> {
+    pub fn unwrap_update(self) -> Vec<Update<'a>> {
+        match self {
+            Self::Update(u) => u,
+            _ => panic!("expected update."),
+        }
+    }
+}
+
+pub trait CalcUpdats {
+    fn changes(&self) -> Change;
+}
+
+
+
+
+macro_rules! _separated {
+
+    ([$($separator:tt)*] $($tokens:tt)*) => {
+        _separated! {
+            separator = [$($separator)*],
+            tokens = [$($tokens)*],
+            result = [],
+        }
+    };
+
+    (
+        separator = [$($separator:tt)*],
+        tokens = [$token:tt,],
+        result = [$($result:tt)*],
+    ) => {
+        _separated! {
+            separator = [$($separator)*],
+            tokens = [],
+            result = [$($result)* $token],
+        }
+    };
+
+    (
+        separator = [$($separator:tt)*],
+        tokens = [$token:tt, $($rest:tt)*],
+        result = [$($result:tt)*],
+    ) => {
+        _separated! {
+            separator = [$($separator)*],
+            tokens = [$($rest)*],
+            result = [$($result)* $token $($separator)*],
+        }
+    };
+
+    (
+        separator = [$($separator:tt)*],
+        tokens = [],
+        result = [$($result:tt)*],
+    ) => {
+        concat!($($result)*)
+    };
+
+    // Invalid syntax
+    ($($tokens:tt)*) => {
+        compile_error!("Invalid `_seperated!` syntax.");
+    };
+}
+
+
+macro_rules! _instead_separated {
+
+    ([$($instead:tt)*] [$($separator:tt)*] $($tokens:tt)*) => {
+        _instead_separated! {
+            instead = [$($instead)*],
+            separator = [$($separator)*],
+            tokens = [$($tokens)*],
+            result = [],
+        }
+    };
+
+    // consume ,
+    (
+        instead = [$($instead:tt)*],
+        separator = [$($separator:tt)*],
+        tokens = [,$($rest:tt)*],
+        result = [$($result:tt)*],
+    ) => {
+        _instead_separated! {
+            instead = [$($instead)*],
+            separator = [$($separator)*],
+            tokens = [$($rest)*],
+            result = [$($result)*],
+        }
+    };
+
+    (
+        instead = [$($instead:tt)*],
+        separator = [$($separator:tt)*],
+        tokens = [$token:tt ,],
+        result = [$($result:tt)*],
+    ) => {
+        _instead_separated! {
+            instead = [$($instead)*],
+            separator = [$($separator)*],
+            tokens = [],
+            result = [$($result)* $($instead)*],
+        }
+    };
+
+    (
+        instead = [$($instead:tt)*],
+        separator = [$($separator:tt)*],
+        tokens = [$token:tt $($rest:tt)+],
+        result = [$($result:tt)*],
+    ) => {
+        _instead_separated! {
+            instead = [$($instead)*],
+            separator = [$($separator)*],
+            tokens = [$($rest)*],
+            result = [$($result)* $($instead)* $($separator)*],
+        }
+    };
+
+    (
+        instead = [$($instead:tt)*],
+        separator = [$($separator:tt)*],
+        tokens = [],
+        result = [$($result:tt)*],
+    ) => {
+        concat!($($result)*)
+    };
+
+    // Invalid syntax
+    ($($tokens:tt)*) => {
+        compile_error!("Invalid `_instead_separated!` syntax.");
+    };
+}
+
 
 macro_rules! _table_impl {
     (
@@ -275,7 +411,29 @@ macro_rules! _table_impl {
                     .await
             }
 
-            async fn build_update_query(&self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>)
+            async fn save(&self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>)
+                -> Option<Result<::sqlx::mysql::MySqlDone, ::sqlx::Error>>
+            {
+                match self.changes() {
+                    Change::Update(u) => self.build_update_query(pool, u).await,
+                    Insert => self.build_insert_query(pool).await
+                }
+            }
+
+
+            async fn build_insert_query<'a>(&'a self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>)
+                -> Option<Result<::sqlx::mysql::MySqlDone, ::sqlx::Error>>
+            where
+             $(
+             $ty: for<'x> ::sqlx::Encode<'x, ::sqlx::mysql::MySql>,
+             $ty: ::sqlx::Type<::sqlx::mysql::MySql>,
+             )*
+             {
+                let sql = concat!("INSERT INTO ", $table_name, " (", _separated! { [,",",] $($column,)* }, ") VALUES ( ", _instead_separated! { ["?"] [,", ",] $($column,)* } , " )");
+                panic!("...");
+             }
+
+            async fn build_update_query<'a>(&'a self, pool : ::sqlx::Pool<::sqlx::mysql::MySql>, updates : Vec<Update<'a>>)
                 -> Option<Result<::sqlx::mysql::MySqlDone, ::sqlx::Error>>
             where
              $(
@@ -284,7 +442,7 @@ macro_rules! _table_impl {
              )*
              {
 
-                let updates = self.updates();
+                let updates = self.changes().unwrap_update();
 
                 if updates.len() == 0 {
                     return None;
@@ -324,30 +482,30 @@ macro_rules! _table_impl {
 
         impl CalcUpdats for $struct_name {
 
-            fn updates(&self) -> Vec<Update> {
+            fn changes(&self) -> Change {
+
+                let shadow = match self._shadow {
+                    Some(ref s) => s,
+                    None => return Change::Insert
+                };
+
+
                 let mut buf = vec![];
                 $(
-
-                    match &self._shadow {
-                        Some(shadow) if &shadow.$type_name == &self.$type_name => {
-                            // noop, same
-                        },
-                        _ => {
-                            buf.push(Update {
-                                field : stringify!($type_name),
-                                column : stringify!($column_name),
-                                new_value : &self.$type_name,
-                                old_value : match &self._shadow {
-                                    None => None,
-                                    Some(s) => Some(&s.$type_name)
-                                },
-                            });
-                        }
-
-                    };
+                    if &shadow.$type_name != &self.$type_name {
+                        buf.push(Update {
+                            field : stringify!($type_name),
+                            column : stringify!($column_name),
+                            new_value : &self.$type_name,
+                            old_value : match &self._shadow {
+                                None => None,
+                                Some(s) => Some(&s.$type_name)
+                            },
+                        });
+                    }
                 )+
 
-                buf
+                Change::Update(buf)
             }
         }
 
@@ -366,8 +524,9 @@ fn main() {
     table!(
         #[table = "bar_table"]
         struct Foo {
-            #[pk, column = "foo column",]
+            #[pk, column = "foo_column",]
             foo1 : u32,
+            #[pk, column = "bar_column",]
             foo2 : u32,
         }
     );
@@ -390,11 +549,13 @@ mod tests {
         );
 
         let x = Foo {
-            _shadow: None,
+            _shadow: Some(table_shadow::Foo {
+                foo1: 124,
+            }),
             foo1: 123,
         };
 
-        assert_eq!(1, CalcUpdats::updates(&x).len());
+        assert_eq!(1, CalcUpdats::changes(&x).unwrap_update().len());
 
         let x = Foo {
             _shadow: Some(table_shadow::Foo {
@@ -403,7 +564,7 @@ mod tests {
             foo1: 123,
         };
 
-        assert_eq!(0, CalcUpdats::updates(&x).len());
+        assert_eq!(0, CalcUpdats::changes(&x).unwrap_update().len());
     }
 
     #[test]
@@ -448,10 +609,10 @@ mod tests {
                     _shadow: None,
                     id: 1,
                     some_field: 2,
-                    some_other_field: 3
+                    some_other_field: 3,
                 };
 
-                item.build_update_query(db_pool).await.expect("insert into db");
+                item.save(db_pool).await.expect("insert into db");
             })
     }
 }
